@@ -26,6 +26,7 @@ mod test;
 
 pub use error::OsError;
 
+use crate::sbi::console_getchar;
 use core::{ptr, slice, str};
 use fdt::{standard_nodes::MemoryRegion, Fdt};
 use riscv::register;
@@ -116,7 +117,33 @@ pub extern "C" fn main(hart_id: usize, dtb: usize) -> ! {
 
     #[cfg(feature = "shell")]
     {
-        // TODO: Lab 0
+        loop {
+            kprint!("PKUOS> ");
+            let mut buffer = [0u8; 1024]; // 1024-byte buffer
+            let mut len = 0;
+
+            loop {
+                let ch = console_getchar();
+                // Convert usize value to a single byte
+                let byte = ch as u8;
+                if byte == b'\n' || byte == b'\r' {
+                    break;
+                }
+
+                if len < buffer.len() {
+                    buffer[len] = byte;
+                    len += 1;
+                }
+            }
+
+            let command = core::str::from_utf8(&buffer[..len]).unwrap();
+
+            if command == "exit" {
+                break;
+            } else if command == "whoami" {
+                kprintln!("gsb4868");
+            }
+        }
     }
 
     DISKFS.unmount();
