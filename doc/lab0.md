@@ -69,7 +69,15 @@ OpenSBI follows the RISC-V boot protocol where it passes the hart ID in register
 
 > C1: Put the screenshot of your kernel monitor running example here. (It should show how your kernel shell respond to `whoami`, `exit`, and `other input`.)
 
+Skipped
+
 > C2: Explain how you read and write to the console for the kernel monitor.
+
+**Writing to Console:**
+The kernel monitor uses the `kprint!` and `kprintln!` macros to write output to the console. These macros use the `stdout()` function from `src/sbi/console.rs`, which locks the standard output and calls `console_putchar()`. The `console_putchar()` function makes an SBI ecall (with `a7=0x01` for CONSOLE_PUTCHAR) to request the SBI firmware to output each character to the console.
+
+**Reading from Console:**
+For reading user input, the kernel monitor calls `console_getchar()` from `src/sbi.rs` in a loop. This function makes an SBI ecall (with `a7=0x02` for CONSOLE_GETCHAR) to read a single character from the console input buffer. The returned character (as a `usize`) is converted to a `u8` byte and stored in a buffer. The reading loop continues until it encounters a newline character (`\n` or `\r`), at which point the buffered input is converted to a string and processed as a command.
 
 ### Extra Note
 
