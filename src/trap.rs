@@ -6,9 +6,10 @@ mod syscall;
 
 use crate::device::{plic, virtio};
 use crate::sbi;
-use crate::thread;
+use crate::thread::{self, SLEEP_LIST};
 use core::arch;
 
+use alloc::vec;
 use riscv::register::scause::{Exception::*, Interrupt::*, Trap::*};
 use riscv::register::sstatus::*;
 use riscv::register::*;
@@ -35,6 +36,28 @@ pub fn set_strap_entry() {
 
 pub fn stvec() -> usize {
     stvec::read().address()
+}
+
+pub fn check_sleeping_threads() {
+    use crate::sbi::timer::timer_ticks;
+    let current_tick = timer_ticks();
+    let mut sleep_list = SLEEP_LIST.lock();
+
+    // Start checking the first element in the sorted map
+    // if the first element has tick <= current_tick, remove, wake up thread, and keep looping
+    // else, break
+    loop {
+        if let Some((wake_tick, thread)) = sleep_list.pop_first() {
+            if wake_tick <= current_tick {
+                thread::wake_up(thread);
+            } else {
+                sleep_list.insert(wake_tick, thread);
+                break;
+            }
+        } else {
+            break; // List is empty, exit the loop
+        }
+    }
 }
 
 #[no_mangle]
@@ -70,6 +93,10 @@ pub extern "C" fn trap_handler(frame: &mut Frame) {
 
         Interrupt(SupervisorTimer) => {
             sbi::timer::tick();
+
+            // Check and wake up sleeping threads
+            check_sleeping_threads();
+
             unsafe { riscv::register::sstatus::set_sie() };
             thread::schedule();
         }

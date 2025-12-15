@@ -5,11 +5,14 @@ pub mod manager;
 pub mod scheduler;
 pub mod switch;
 
+use crate::sbi;
+use crate::sync::Lazy;
+
 pub use self::imp::*;
 pub use self::manager::Manager;
 pub(self) use self::scheduler::{Schedule, Scheduler};
 
-use alloc::sync::Arc;
+use alloc::{collections::btree_map::BTreeMap, sync::Arc};
 
 /// Create a new thread
 pub fn spawn<F>(name: &'static str, f: F) -> Arc<Thread>
@@ -77,13 +80,26 @@ pub fn get_priority() -> u32 {
     0
 }
 
+pub static SLEEP_LIST: Lazy<Mutex<BTreeMap<i64, Arc<Thread>>>> =
+    Lazy::new(|| Mutex::new(BTreeMap::new()));
+
 /// (Lab1) Make the current thread sleep for the given ticks.
 pub fn sleep(ticks: i64) {
-    use crate::sbi::timer::{timer_elapsed, timer_ticks};
+    use crate::sbi::timer::timer_ticks;
 
-    let start = timer_ticks();
+    // let start = timer_ticks();
 
-    while timer_elapsed(start) < ticks {
-        schedule();
-    }
+    // while timer_elapsed(start) < ticks {
+    //     schedule();
+    // }
+
+    // Calculate when the thread should wake up
+    let wake_tick = timer_ticks() + ticks;
+    let current_thread = current();
+
+    // Push the new thread to SLEEP_LIST
+    SLEEP_LIST.lock().insert(wake_tick, current_thread);
+
+    // Block the current thread
+    block();
 }
