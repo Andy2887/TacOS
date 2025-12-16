@@ -13,3 +13,10 @@ This repo contains skeleton code for undergraduate Operating System course honor
 
 Original: `Workspace/> cargo -F test-user,debug -- -append args-none`
 Fixed: `Workspace/> cargo run -F test-user,debug -- -append args-none`
+
+### Fast commands
+Alarm Multiple Test Case:
+Print Debugging:
+- `cargo run -F test-schedule,debug -- -append alarm-multiple`
+Debugger (in tool):
+- `cargo gdb -c alarm-multiple`

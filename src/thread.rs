@@ -11,7 +11,7 @@ pub use self::imp::*;
 pub use self::manager::Manager;
 pub(self) use self::scheduler::{Schedule, Scheduler};
 
-use alloc::{collections::btree_map::BTreeMap, sync::Arc};
+use alloc::{collections::btree_map::BTreeMap, sync::Arc, vec::Vec};
 
 /// Create a new thread
 pub fn spawn<F>(name: &'static str, f: F) -> Arc<Thread>
@@ -79,7 +79,7 @@ pub fn get_priority() -> u32 {
     0
 }
 
-pub static SLEEP_LIST: Lazy<Mutex<BTreeMap<i64, Arc<Thread>>>> =
+pub static SLEEP_LIST: Lazy<Mutex<BTreeMap<i64, Vec<Arc<Thread>>>>> =
     Lazy::new(|| Mutex::new(BTreeMap::new()));
 
 /// (Lab1) Make the current thread sleep for the given ticks.
@@ -101,7 +101,11 @@ pub fn sleep(ticks: i64) {
     let current_thread = current();
 
     // Push the new thread to SLEEP_LIST
-    SLEEP_LIST.lock().insert(wake_tick, current_thread);
+    SLEEP_LIST
+        .lock()
+        .entry(wake_tick)
+        .or_default()
+        .push(current_thread);
 
     // Block the current thread
     block();

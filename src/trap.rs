@@ -57,11 +57,14 @@ pub fn check_sleeping_threads() {
     // if the first element has tick <= current_tick, remove, wake up thread, and keep looping
     // else, break
     loop {
-        if let Some((wake_tick, thread)) = sleep_list.pop_first() {
+        if let Some((wake_tick, vec_threads)) = sleep_list.pop_first() {
             if wake_tick <= current_tick {
-                thread::wake_up(thread);
+                // Wake up all the threads in vec_threads
+                for thread in vec_threads {
+                    thread::wake_up(thread);
+                }
             } else {
-                sleep_list.insert(wake_tick, thread);
+                sleep_list.insert(wake_tick, vec_threads);
                 break;
             }
         } else {
