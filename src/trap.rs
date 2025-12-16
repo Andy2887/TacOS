@@ -9,7 +9,6 @@ use crate::sbi;
 use crate::thread::{self, SLEEP_LIST};
 use core::arch;
 
-use alloc::vec;
 use riscv::register::scause::{Exception::*, Interrupt::*, Trap::*};
 use riscv::register::sstatus::*;
 use riscv::register::*;

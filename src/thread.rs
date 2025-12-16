@@ -5,7 +5,6 @@ pub mod manager;
 pub mod scheduler;
 pub mod switch;
 
-use crate::sbi;
 use crate::sync::Lazy;
 
 pub use self::imp::*;
@@ -92,6 +91,10 @@ pub fn sleep(ticks: i64) {
     // while timer_elapsed(start) < ticks {
     //     schedule();
     // }
+
+    if ticks == 0 {
+        return;
+    }
 
     // Calculate when the thread should wake up
     let wake_tick = timer_ticks() + ticks;

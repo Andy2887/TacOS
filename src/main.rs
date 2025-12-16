@@ -26,7 +26,6 @@ mod test;
 
 pub use error::OsError;
 
-use crate::sbi::console_getchar;
 use core::{ptr, slice, str};
 use fdt::{standard_nodes::MemoryRegion, Fdt};
 use riscv::register;
