@@ -92,7 +92,7 @@ pub fn sleep(ticks: i64) {
     //     schedule();
     // }
 
-    if ticks == 0 {
+    if ticks <= 0 {
         return;
     }
 
