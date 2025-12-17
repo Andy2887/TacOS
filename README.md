@@ -14,6 +14,8 @@ This repo contains skeleton code for undergraduate Operating System course honor
 Original: `Workspace/> cargo -F test-user,debug -- -append args-none`
 Fixed: `Workspace/> cargo run -F test-user,debug -- -append args-none`
 
+2, Some of the dependencies in the enviornment need to be depreciated.
+
 ### Fast commands
 Alarm Multiple Test Case:
 Print Debugging:

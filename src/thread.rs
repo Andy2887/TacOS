@@ -72,11 +72,15 @@ pub fn wake_up(thread: Arc<Thread>) {
 }
 
 /// (Lab1) Sets the current thread's priority to a given value
-pub fn set_priority(_priority: u32) {}
+pub fn set_priority(priority: u32) {
+    use core::sync::atomic::Ordering;
+    current().priority.store(priority, Ordering::Relaxed);
+}
 
 /// (Lab1) Returns the current thread's effective priority.
 pub fn get_priority() -> u32 {
-    0
+    use core::sync::atomic::Ordering;
+    current().priority.load(Ordering::Relaxed)
 }
 
 pub static SLEEP_LIST: Lazy<Mutex<BTreeMap<i64, Vec<Arc<Thread>>>>> =
