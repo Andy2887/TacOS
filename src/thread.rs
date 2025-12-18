@@ -87,8 +87,12 @@ pub fn set_priority(priority: u32) {
     let new_highest_priority = Manager::get().scheduler.lock().highest_priority();
 
     // If the current thread was the highest priority and now it is no longer the highest priority
+    // or if the current thread was not the highest priority and now it is the highest priority
     // yield to scheduler
-    if old_priority == old_highest_priority && priority < new_highest_priority {
+    let was_highest = old_priority == old_highest_priority;
+    let is_highest = priority == new_highest_priority;
+
+    if was_highest != is_highest {
         schedule();
     }
 }
