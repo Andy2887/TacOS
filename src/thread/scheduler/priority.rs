@@ -40,4 +40,22 @@ impl Schedule for Priority {
             None
         }
     }
+
+    fn change_priority(&mut self, thread: Arc<Thread>, priority: u32) {
+        let tid = thread.id();
+        let old_priority = *self.thread_to_priority.get(&tid).unwrap();
+        self.thread_to_priority
+            .entry(tid)
+            .and_modify(|v| *v = priority);
+
+        let old_bucket = self.priority_to_thread.get_mut(&old_priority).unwrap();
+        if let Some(index) = old_bucket.iter().position(|x| Arc::ptr_eq(x, &thread)) {
+            old_bucket.remove(index);
+        }
+
+        self.priority_to_thread
+            .entry(priority)
+            .or_default()
+            .push_back(thread);
+    }
 }

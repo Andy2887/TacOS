@@ -75,6 +75,11 @@ pub fn wake_up(thread: Arc<Thread>) {
 pub fn set_priority(priority: u32) {
     use core::sync::atomic::Ordering;
     current().priority.store(priority, Ordering::Relaxed);
+    // Update priority in scheduler
+    Manager::get()
+        .scheduler
+        .lock()
+        .change_priority(current(), priority);
 }
 
 /// (Lab1) Returns the current thread's effective priority.
