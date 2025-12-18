@@ -1,7 +1,7 @@
 use alloc::collections::VecDeque;
 use alloc::sync::Arc;
 
-use crate::thread::{BTreeMap, Schedule, Thread};
+use crate::thread::{BTreeMap, Schedule, Thread, PRI_MIN};
 
 /// (lab1) Priority Scheduler
 #[derive(Default)]
@@ -57,6 +57,14 @@ impl Schedule for Priority {
                 .entry(priority)
                 .or_default()
                 .push_back(thread);
+        }
+    }
+
+    fn highest_priority(&mut self) -> u32 {
+        if let Some(highest_priority) = self.priority_to_thread.keys().next_back() {
+            *highest_priority
+        } else {
+            PRI_MIN
         }
     }
 }

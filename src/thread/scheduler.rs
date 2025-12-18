@@ -10,7 +10,7 @@ pub mod priority;
 
 use alloc::sync::Arc;
 
-use crate::thread::Thread;
+use crate::thread::{Thread, PRI_MIN};
 
 #[cfg(feature = "thread-scheduler-priority")]
 // (Lab1) Your task: priority scheduling
@@ -31,4 +31,8 @@ pub trait Schedule: Default {
     /// Update a thread's priority in the scheduler.
     /// Default is a no-op for schedulers that don't use priority.
     fn change_priority(&mut self, _thread: Arc<Thread>, _new_priority: u32) {}
+
+    fn highest_priority(&mut self) -> u32 {
+        PRI_MIN
+    }
 }

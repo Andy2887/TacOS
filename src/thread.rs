@@ -74,12 +74,23 @@ pub fn wake_up(thread: Arc<Thread>) {
 /// (Lab1) Sets the current thread's priority to a given value
 pub fn set_priority(priority: u32) {
     use core::sync::atomic::Ordering;
+    let old_priority = get_priority();
+    let old_highest_priority = Manager::get().scheduler.lock().highest_priority();
+
     current().priority.store(priority, Ordering::Relaxed);
     // Update priority in scheduler
     Manager::get()
         .scheduler
         .lock()
         .change_priority(current(), priority);
+
+    let new_highest_priority = Manager::get().scheduler.lock().highest_priority();
+
+    // If the current thread was the highest priority and now it is no longer the highest priority
+    // yield to scheduler
+    if old_priority == old_highest_priority && priority < new_highest_priority {
+        schedule();
+    }
 }
 
 /// (Lab1) Returns the current thread's effective priority.
