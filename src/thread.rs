@@ -74,26 +74,32 @@ pub fn wake_up(thread: Arc<Thread>) {
 /// (Lab1) Sets the current thread's priority to a given value
 pub fn set_priority(priority: u32) {
     use core::sync::atomic::Ordering;
-    let old_priority = get_priority();
-    let old_highest_priority = Manager::get().scheduler.lock().highest_priority();
+    let current_thread = current();
 
-    current().priority.store(priority, Ordering::Relaxed);
-    // Update priority in scheduler
-    Manager::get()
-        .scheduler
-        .lock()
-        .change_priority(current(), priority);
+    current_thread.priority.store(priority, Ordering::Relaxed);
 
-    let new_highest_priority = Manager::get().scheduler.lock().highest_priority();
+    #[cfg(feature = "debug")]
+    kprintln!(
+        "[DEBUG set_priority] thread_id: {}, new priority: {}",
+        current_thread.id(),
+        priority
+    );
 
-    // If the current thread was the highest priority and now it is no longer the highest priority
-    // or if the current thread was not the highest priority and now it is the highest priority
-    // yield to scheduler
-    let was_highest = old_priority == old_highest_priority;
-    let is_highest = priority == new_highest_priority;
+    let highest_priority = Manager::get().scheduler.lock().highest_priority();
 
-    if was_highest != is_highest {
+    #[cfg(feature = "debug")]
+    kprintln!(
+        "[DEBUG set_priority] Highest priority in scheduler: {}",
+        highest_priority
+    );
+
+    if priority < highest_priority {
+        #[cfg(feature = "debug")]
+        kprintln!("[DEBUG set_priority] schedule() called! ");
         schedule();
+    } else {
+        #[cfg(feature = "debug")]
+        kprintln!("[DEBUG set_priority] Not calling schedule()!");
     }
 }
 
