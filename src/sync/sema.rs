@@ -1,4 +1,5 @@
-use alloc::collections::VecDeque;
+use alloc::collections::btree_map::BTreeMap;
+use alloc::collections::vec_deque::VecDeque;
 use alloc::sync::Arc;
 use core::cell::{Cell, RefCell};
 
@@ -16,7 +17,7 @@ use crate::thread::{self, Thread};
 #[derive(Clone)]
 pub struct Semaphore {
     value: Cell<usize>,
-    waiters: RefCell<VecDeque<Arc<Thread>>>,
+    waiters: RefCell<BTreeMap<u32, VecDeque<Arc<Thread>>>>,
 }
 
 unsafe impl Sync for Semaphore {}
@@ -27,7 +28,7 @@ impl Semaphore {
     pub const fn new(n: usize) -> Self {
         Semaphore {
             value: Cell::new(n),
-            waiters: RefCell::new(VecDeque::new()),
+            waiters: RefCell::new(BTreeMap::new()),
         }
     }
 
@@ -37,9 +38,12 @@ impl Semaphore {
 
         // Is semaphore available?
         while self.value() == 0 {
-            // `push_front` ensures to wake up threads in a fifo manner
-            self.waiters.borrow_mut().push_front(thread::current());
-
+            let priority = thread::get_priority();
+            self.waiters
+                .borrow_mut()
+                .entry(priority)
+                .or_insert_with(VecDeque::new)
+                .push_back(thread::current());
             // Block the current thread until it's awakened by an `up` operation
             thread::block();
         }
@@ -53,11 +57,23 @@ impl Semaphore {
         let old = sbi::interrupt::set(false);
         let count = self.value.replace(self.value() + 1);
 
-        // Check if we need to wake up a sleeping waiter
-        if let Some(thread) = self.waiters.borrow_mut().pop_back() {
+        // Check if we need to wake up a sleeping waiter (highest priority first)
+        let mut waiters = self.waiters.borrow_mut();
+        if let Some(&priority) = waiters.keys().next_back() {
             assert_eq!(count, 0);
 
-            thread::wake_up(thread.clone());
+            let thread = waiters
+                .get_mut(&priority)
+                .and_then(|deque| deque.pop_front());
+
+            // Remove the priority entry if the deque is now empty
+            if waiters.get(&priority).map_or(false, |d| d.is_empty()) {
+                waiters.remove(&priority);
+            }
+
+            if let Some(t) = thread {
+                thread::wake_up(t);
+            }
         }
 
         sbi::interrupt::set(old);

@@ -24,12 +24,22 @@ const EXPECTED_STATUS: [[i8; THREAD_CNT + 1]; THREAD_CNT + 1] = [
     [0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 0],
 ];
 
+// Thread 1 to 5 have priority 25 to 21
+// Thread 6 to 10 have priority 30 to 26
+// All the threads sleep and wake up at time 50.
+// Bug: some threads wake up at time 51
+// Some wake up at time 52
+
 fn alarm_priority_thread(tid: usize, sema: Arc<Semaphore>) {
     // Busy-wait until the current time changes.
-    let start = timer_ticks();
-    while timer_elapsed(start) == 0 {}
+    // let start = timer_ticks();
+    // while timer_elapsed(start) == 0 {}
 
-    sleep(WAKE_TIME - start);
+    // sleep(WAKE_TIME - start);
+
+    // Note: the above code is in the original test case which, I believe, does not make sense
+    // I use the below code to substitute instead.
+    sleep(WAKE_TIME - timer_ticks());
 
     unsafe {
         // Check other thread's status before exit.

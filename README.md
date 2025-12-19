@@ -17,8 +17,8 @@ Fixed: `Workspace/> cargo run -F test-user,debug -- -append args-none`
 2, Some of the dependencies in the enviornment need to be depreciated.
 
 ### Fast commands
-Priority fifo Test Case:
+Priority alarm Test Case:
 Print Debugging:
-- `cargo run -F test-schedule,debug -- -append priority-fifo`
+- `cargo run -F test-schedule,debug -- -append priority-alarm`
 Debugger (in tool):
-- `cargo gdb -c priority-fifo`
+- `cargo gdb -c priority-alarm`

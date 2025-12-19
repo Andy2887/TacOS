@@ -62,11 +62,16 @@ pub fn block() {
 /// Wake up a previously blocked thread, mark it as [`Ready`](Status::Ready),
 /// and register it into the scheduler.
 pub fn wake_up(thread: Arc<Thread>) {
+    use core::sync::atomic::Ordering;
     assert_eq!(thread.status(), Status::Blocked);
     thread.set_status(Status::Ready);
 
     #[cfg(feature = "debug")]
-    kprintln!("[THREAD] Wake up {:?}", thread);
+    kprintln!(
+        "[THREAD] Wake up {:?} with priority {}",
+        thread,
+        thread.priority.load(Ordering::Relaxed)
+    );
 
     Manager::get().scheduler.lock().register(thread);
 }
