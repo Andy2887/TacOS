@@ -4,6 +4,7 @@ mod imp;
 pub mod manager;
 pub mod scheduler;
 pub mod switch;
+use crate::thread;
 
 pub use self::imp::*;
 pub use self::manager::Manager;
@@ -72,7 +73,14 @@ pub fn wake_up(thread: Arc<Thread>) {
         thread.priority.load(Ordering::Relaxed)
     );
 
-    Manager::get().scheduler.lock().register(thread);
+    Manager::get().scheduler.lock().register(thread.clone());
+
+    // If the new waken up thread has higher priority than the current thread,
+    // the current thread will yield
+
+    if thread.priority.load(Ordering::Relaxed) > thread::get_priority() {
+        schedule();
+    }
 }
 
 /// (Lab1) Sets the current thread's priority to a given value

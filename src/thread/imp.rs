@@ -8,8 +8,10 @@ use core::sync::atomic::{AtomicIsize, AtomicU32, Ordering::SeqCst};
 
 use crate::mem::{kalloc, kfree, PageTable, PG_SIZE};
 use crate::sbi::interrupt;
-use crate::thread::Manager;
+use crate::thread;
+use crate::thread::{schedule, Manager};
 use crate::userproc::UserProc;
+use core::sync::atomic::Ordering;
 
 pub const PRI_DEFAULT: u32 = 31;
 pub const PRI_MAX: u32 = 63;
@@ -181,6 +183,13 @@ impl Builder {
         kprintln!("[THREAD] create {:?}", new_thread);
 
         Manager::get().register(new_thread.clone());
+
+        // If the new spawned thread has higher priority than the current thread,
+        // the current thread will yield
+
+        if new_thread.priority.load(Ordering::Relaxed) > thread::get_priority() {
+            schedule();
+        }
 
         // Off you go
         new_thread
