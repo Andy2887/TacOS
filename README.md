@@ -24,5 +24,5 @@ Debugger (in tool):
 - `cargo gdb -c priority-condvar`
 
 ### To Do
-1, Check test case test/schedule/priority/preempt.rs, figure out what schedule() should do exactly
+1, Fix Semaphore test case
 2, Fix condvar test case

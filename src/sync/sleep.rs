@@ -5,7 +5,6 @@ use crate::sync::{Lock, Semaphore};
 use crate::thread::{self, Thread};
 
 /// Sleep lock. Uses [`Semaphore`] under the hood.
-#[derive(Clone)]
 pub struct Sleep {
     inner: Semaphore,
     holder: RefCell<Option<Arc<Thread>>>,
