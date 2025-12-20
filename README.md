@@ -19,10 +19,9 @@ Fixed: `Workspace/> cargo run -F test-user,debug -- -append args-none`
 ### Fast commands
 priority-condvar Test Case:
 Print Debugging:
-- `cargo run -F test-schedule,debug -- -append priority-condvar`
+- `cargo run -F test-schedule,debug -- -append priority-preempt`
 Debugger (in tool):
 - `cargo gdb -c priority-condvar`
 
 ### To Do
-1, Fix Semaphore test case
-2, Fix condvar test case
+1, fix alarm test cases
