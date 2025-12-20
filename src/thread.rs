@@ -5,11 +5,11 @@ pub mod manager;
 pub mod scheduler;
 pub mod switch;
 
-use crate::sync::Lazy;
-
 pub use self::imp::*;
 pub use self::manager::Manager;
 pub(self) use self::scheduler::{Schedule, Scheduler};
+use crate::sync::Lazy;
+use core::sync::atomic::Ordering;
 
 use alloc::{collections::btree_map::BTreeMap, sync::Arc, vec::Vec};
 
@@ -62,7 +62,6 @@ pub fn block() {
 /// Wake up a previously blocked thread, mark it as [`Ready`](Status::Ready),
 /// and register it into the scheduler.
 pub fn wake_up(thread: Arc<Thread>) {
-    use core::sync::atomic::Ordering;
     assert_eq!(thread.status(), Status::Blocked);
     thread.set_status(Status::Ready);
 
@@ -78,7 +77,6 @@ pub fn wake_up(thread: Arc<Thread>) {
 
 /// (Lab1) Sets the current thread's priority to a given value
 pub fn set_priority(priority: u32) {
-    use core::sync::atomic::Ordering;
     let current_thread = current();
 
     current_thread.priority.store(priority, Ordering::Relaxed);
@@ -110,7 +108,6 @@ pub fn set_priority(priority: u32) {
 
 /// (Lab1) Returns the current thread's effective priority.
 pub fn get_priority() -> u32 {
-    use core::sync::atomic::Ordering;
     current().priority.load(Ordering::Relaxed)
 }
 

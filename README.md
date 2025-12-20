@@ -17,8 +17,12 @@ Fixed: `Workspace/> cargo run -F test-user,debug -- -append args-none`
 2, Some of the dependencies in the enviornment need to be depreciated.
 
 ### Fast commands
-Priority alarm Test Case:
+priority-condvar Test Case:
 Print Debugging:
-- `cargo run -F test-schedule,debug -- -append priority-alarm`
+- `cargo run -F test-schedule,debug -- -append priority-condvar`
 Debugger (in tool):
-- `cargo gdb -c priority-alarm`
+- `cargo gdb -c priority-condvar`
+
+### To Do
+1, Check test case test/schedule/priority/preempt.rs, figure out what schedule() should do exactly
+2, Fix condvar test case

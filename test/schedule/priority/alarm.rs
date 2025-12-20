@@ -1,4 +1,4 @@
-use crate::sbi::timer::{timer_elapsed, timer_ticks};
+use crate::sbi::timer::timer_ticks;
 use crate::sync::Semaphore;
 
 use super::*;
