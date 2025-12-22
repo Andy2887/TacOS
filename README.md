@@ -24,4 +24,4 @@ Debugger (in tool):
 - `cargo gdb -c priority-condvar`
 
 ### To Do
-1, fix alarm test cases
+1, check alarm-multiple failing test case.

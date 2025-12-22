@@ -10,8 +10,8 @@ use crate::mem::KernelPgTable;
 use crate::sbi::interrupt;
 use crate::sync::Lazy;
 use crate::thread::{
-    current, schedule, scheduler, switch, Builder, Mutex, Schedule, Scheduler, Status, Thread,
-    MAGIC, PRI_DEFAULT, PRI_MIN,
+    schedule, switch, Builder, Mutex, Schedule, Scheduler, Status, Thread, MAGIC, PRI_DEFAULT,
+    PRI_MIN,
 };
 
 /* --------------------------------- MANAGER -------------------------------- */

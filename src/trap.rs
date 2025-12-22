@@ -4,9 +4,12 @@
 mod pagefault;
 mod syscall;
 
+use alloc::sync::Arc;
+use alloc::vec::Vec;
+
 use crate::device::{plic, virtio};
 use crate::sbi;
-use crate::thread::{self, SLEEP_LIST};
+use crate::thread::{self, Thread, SLEEP_LIST};
 use core::arch;
 
 use riscv::register::scause::{Exception::*, Interrupt::*, Trap::*};
@@ -39,37 +42,50 @@ pub fn stvec() -> usize {
 
 pub fn check_sleeping_threads() {
     use crate::sbi::timer::timer_ticks;
-    let current_tick = timer_ticks();
-    let mut sleep_list = SLEEP_LIST.lock();
 
-    #[cfg(feature = "debug")]
-    kprintln!("[DEBUG] current_tick: {}", current_tick);
+    // Collect threads to wake while holding the lock, then release lock before waking.
+    // This prevents deadlock: wake_up() can call schedule() if the woken thread has
+    // higher priority, which would cause a context switch while SLEEP_LIST is locked.
+    let threads_to_wake: Vec<Arc<Thread>> = {
+        let current_tick = timer_ticks();
+        let mut sleep_list = SLEEP_LIST.lock();
 
-    #[cfg(feature = "debug")]
-    kprintln!("[DEBUG] sleep_list:");
+        #[cfg(feature = "debug")]
+        kprintln!("[DEBUG] current_tick: {}", current_tick);
 
-    #[cfg(feature = "debug")]
-    for (wake_tick, thread) in sleep_list.iter() {
-        kprintln!("[DEBUG]   wake_tick: {}, thread: {:?}", wake_tick, thread);
-    }
+        #[cfg(feature = "debug")]
+        kprintln!("[DEBUG] sleep_list:");
 
-    // Start checking the first element in the sorted map
-    // if the first element has tick <= current_tick, remove, wake up thread, and keep looping
-    // else, break
-    loop {
-        if let Some((wake_tick, vec_threads)) = sleep_list.pop_first() {
-            if wake_tick <= current_tick {
-                // Wake up all the threads in vec_threads
-                for thread in vec_threads {
-                    thread::wake_up(thread);
+        #[cfg(feature = "debug")]
+        for (wake_tick, thread) in sleep_list.iter() {
+            kprintln!("[DEBUG]   wake_tick: {}, thread: {:?}", wake_tick, thread);
+        }
+
+        let mut to_wake = Vec::new();
+
+        // Start checking the first element in the sorted map
+        // if the first element has tick <= current_tick, remove, wake up thread, and keep looping
+        // else, break
+        loop {
+            if let Some((wake_tick, vec_threads)) = sleep_list.pop_first() {
+                if wake_tick <= current_tick {
+                    // Collect threads to wake later
+                    to_wake.extend(vec_threads);
+                } else {
+                    sleep_list.insert(wake_tick, vec_threads);
+                    break;
                 }
             } else {
-                sleep_list.insert(wake_tick, vec_threads);
-                break;
+                break; // List is empty, exit the loop
             }
-        } else {
-            break; // List is empty, exit the loop
         }
+
+        to_wake
+    }; // SLEEP_LIST lock released here
+
+    // Wake threads without holding the lock
+    for thread in threads_to_wake {
+        thread::wake_up(thread);
     }
 }
 
