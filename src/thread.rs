@@ -9,6 +9,7 @@ use crate::thread;
 pub use self::imp::*;
 pub use self::manager::Manager;
 pub(self) use self::scheduler::{Schedule, Scheduler};
+use crate::sbi::interrupt;
 use crate::sync::Lazy;
 use core::sync::atomic::Ordering;
 
@@ -125,6 +126,8 @@ pub static SLEEP_LIST: Lazy<Mutex<BTreeMap<i64, Vec<Arc<Thread>>>>> =
 pub fn sleep(ticks: i64) {
     use crate::sbi::timer::timer_ticks;
 
+    let old = interrupt::set(false);
+
     // let start = timer_ticks();
 
     // while timer_elapsed(start) < ticks {
@@ -145,6 +148,8 @@ pub fn sleep(ticks: i64) {
         .entry(wake_tick)
         .or_default()
         .push(current_thread);
+
+    interrupt::set(old);
 
     // Block the current thread
     block();
