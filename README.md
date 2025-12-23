@@ -23,7 +23,7 @@ Print Debugging:
 Debugger (in tool):
 - `cargo gdb -c priority-condvar`
 
-### To Do
+### Plan
 Priority Donation Plan
 Plan:
 1, In sleep.rs,
@@ -72,3 +72,8 @@ In this case, he will call donate(). Donate will recursively being called, becau
 Note: the donate() function must pass all the donations of the current thread down to the next thread.
 
 For example, assume M starts working, H donates to M, and M tries to acquire a lock that L has. In this case, M must contribute all of its donations down to L so that L has H's priority.
+
+
+##### To Do
+
+1, Update functions to use priority() instead of load

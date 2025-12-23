@@ -34,6 +34,10 @@ impl Lock for Sleep {
         self.holder.borrow_mut().take().unwrap();
         self.inner.up();
     }
+
+    fn holder(&self) -> Option<Arc<Thread>> {
+        self.holder.borrow().clone()
+    }
 }
 
 unsafe impl Sync for Sleep {}

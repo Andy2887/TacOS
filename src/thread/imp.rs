@@ -1,6 +1,8 @@
 //! Implementation of kernel threads
 
 use alloc::boxed::Box;
+use alloc::collections::btree_map::BTreeMap;
+use alloc::collections::VecDeque;
 use alloc::sync::Arc;
 use core::arch::global_asm;
 use core::fmt::{self, Debug};
@@ -8,6 +10,7 @@ use core::sync::atomic::{AtomicIsize, AtomicU32, Ordering::SeqCst};
 
 use crate::mem::{kalloc, kfree, PageTable, PG_SIZE};
 use crate::sbi::interrupt;
+use crate::sync::Sleep;
 use crate::thread;
 use crate::thread::{schedule, Manager};
 use crate::userproc::UserProc;
@@ -32,9 +35,18 @@ pub struct Thread {
     stack: usize,
     status: Mutex<Status>,
     context: Mutex<Context>,
+    donation_state: Mutex<DonationData>,
+    waits_on: Option<Arc<Sleep>>,
     pub priority: AtomicU32,
     pub userproc: Option<UserProc>,
     pub pagetable: Option<Mutex<PageTable>>,
+}
+
+struct DonationData {
+    /// key: actual priority, value: deque of thread id
+    priorities: BTreeMap<u32, VecDeque<isize>>,
+    /// key: thread id, value: thread reference
+    donors: BTreeMap<isize, Arc<Thread>>,
 }
 
 impl Thread {
@@ -55,6 +67,11 @@ impl Thread {
             stack,
             status: Mutex::new(Status::Ready),
             context: Mutex::new(Context::new(stack, entry)),
+            donation_state: Mutex::new(DonationData {
+                priorities: BTreeMap::new(),
+                donors: BTreeMap::new(),
+            }),
+            waits_on: None,
             priority: AtomicU32::new(priority),
             userproc,
             pagetable: pagetable.map(Mutex::new),
@@ -71,6 +88,62 @@ impl Thread {
 
     pub fn status(&self) -> Status {
         *self.status.lock()
+    }
+
+    pub fn priority(&self) -> u32 {
+        self.priority.load(Ordering::Relaxed)
+    }
+
+    pub fn effective_priority(&self) -> u32 {
+        let state = self.donation_state.lock();
+        if state.donors.is_empty() {
+            return self.priority();
+        }
+
+        let &effective_priority = state.priorities.keys().next_back().unwrap();
+        assert!(effective_priority > self.priority());
+        effective_priority
+    }
+
+    pub fn donors(&self) -> BTreeMap<isize, Arc<Thread>> {
+        self.donation_state.lock().donors.clone()
+    }
+
+    pub fn add_donor(&self, thread: Arc<Thread>) {
+        let priority = thread.priority();
+        let tid = thread.id();
+
+        let mut guard = self.donation_state.lock();
+
+        if !guard.donors.contains_key(&tid) {
+            guard.donors.insert(tid, thread);
+            guard.priorities.entry(priority).or_default().push_back(tid);
+        }
+    }
+
+    pub fn remove_donor(&self, thread: Arc<Thread>) {
+        let priority = thread.priority();
+        let tid = thread.id();
+
+        let mut guard = self.donation_state.lock();
+
+        if guard.donors.contains_key(&tid) {
+            guard.donors.remove(&tid);
+
+            let bucket = guard.priorities.get_mut(&priority).unwrap();
+
+            if let Some(index) = bucket.iter().position(|x| *x == tid) {
+                bucket.remove(index);
+
+                if bucket.is_empty() {
+                    guard.priorities.remove(&priority);
+                }
+            }
+        }
+    }
+
+    pub fn waits_on(&self) -> Option<Arc<Sleep>> {
+        self.waits_on.clone()
     }
 
     pub fn set_status(&self, status: Status) {
@@ -187,7 +260,7 @@ impl Builder {
         // If the new spawned thread has higher priority than the current thread,
         // the current thread will yield
 
-        if new_thread.priority.load(Ordering::Relaxed) > thread::get_priority() {
+        if new_thread.effective_priority() > thread::get_priority() {
             schedule();
         }
 

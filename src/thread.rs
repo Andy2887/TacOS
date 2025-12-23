@@ -4,6 +4,7 @@ mod imp;
 pub mod manager;
 pub mod scheduler;
 pub mod switch;
+use crate::sync::Lock;
 use crate::thread;
 
 pub use self::imp::*;
@@ -68,7 +69,7 @@ pub fn wake_up(thread: Arc<Thread>) {
     kprintln!(
         "[THREAD] Wake up {:?} with priority {}",
         thread,
-        thread.priority.load(Ordering::Relaxed)
+        thread.effective_priority()
     );
     assert_eq!(thread.status(), Status::Blocked);
     thread.set_status(Status::Ready);
@@ -78,7 +79,7 @@ pub fn wake_up(thread: Arc<Thread>) {
     // If the new waken up thread has higher priority than the current thread,
     // the current thread will yield
 
-    if thread.priority.load(Ordering::Relaxed) > thread::get_priority() {
+    if thread.effective_priority() > thread::get_priority() {
         schedule();
     }
 }
@@ -116,7 +117,7 @@ pub fn set_priority(priority: u32) {
 
 /// (Lab1) Returns the current thread's effective priority.
 pub fn get_priority() -> u32 {
-    current().priority.load(Ordering::Relaxed)
+    current().effective_priority()
 }
 
 pub static SLEEP_LIST: Lazy<Mutex<BTreeMap<i64, Vec<Arc<Thread>>>>> =
@@ -153,4 +154,19 @@ pub fn sleep(ticks: i64) {
 
     // Block the current thread
     block();
+}
+
+pub fn donate_to(donor: Arc<Thread>, receiver: Arc<Thread>) {
+    let mut donors = donor.donors();
+
+    donors.insert(donor.id(), donor);
+
+    for (_, thread) in donors {
+        receiver.add_donor(thread);
+    }
+
+    if let Some(lock) = receiver.waits_on() {
+        let next_receiver = lock.holder().unwrap();
+        donate_to(receiver, next_receiver);
+    }
 }

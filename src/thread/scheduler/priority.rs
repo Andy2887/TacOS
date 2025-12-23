@@ -12,8 +12,7 @@ pub struct Priority {
 
 impl Schedule for Priority {
     fn register(&mut self, thread: Arc<Thread>) {
-        use core::sync::atomic::Ordering;
-        let priority = thread.priority.load(Ordering::Relaxed);
+        let priority = thread.effective_priority();
         let tid = thread.id();
         self.priority_to_thread
             .entry(priority)
@@ -51,6 +50,10 @@ impl Schedule for Priority {
             let old_bucket = self.priority_to_thread.get_mut(&old_priority).unwrap();
             if let Some(index) = old_bucket.iter().position(|x| Arc::ptr_eq(x, &thread)) {
                 old_bucket.remove(index);
+
+                if old_bucket.is_empty() {
+                    self.priority_to_thread.remove(&old_priority);
+                }
             }
 
             self.priority_to_thread

@@ -1,6 +1,9 @@
 //! Synchronization and Interior Mutability
 //!
 
+use alloc::sync::Arc;
+use crate::thread::Thread;
+
 pub mod condvar;
 pub mod intr;
 pub mod lazy;
@@ -29,4 +32,7 @@ pub type Primitive = sleep::Sleep;
 pub trait Lock: Default + Sync + 'static {
     fn acquire(&self);
     fn release(&self);
+    fn holder(&self) -> Option<Arc<Thread>> {
+        None
+    }
 }
