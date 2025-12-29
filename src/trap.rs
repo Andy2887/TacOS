@@ -61,6 +61,9 @@ pub fn check_sleeping_threads() {
             kprintln!("[DEBUG]   wake_tick: {}, thread: {:?}", wake_tick, thread);
         }
 
+        #[cfg(feature = "debug")]
+        kprintln!("[DEBUG] sleep_list ends");
+
         let mut to_wake = Vec::new();
 
         // Start checking the first element in the sorted map

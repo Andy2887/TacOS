@@ -79,8 +79,19 @@ pub fn wake_up(thread: Arc<Thread>) {
     // If the new waken up thread has higher priority than the current thread,
     // the current thread will yield
 
+    #[cfg(feature = "debug")]
+    kprintln!(
+        "[THREAD] current thread priority: {}",
+        thread::get_priority()
+    );
+
     if thread.effective_priority() > thread::get_priority() {
+        #[cfg(feature = "debug")]
+        kprintln!("[THREAD] Schedule() is called!");
         schedule();
+    } else {
+        #[cfg(feature = "debug")]
+        kprintln!("[THREAD] Schedule() is not called!");
     }
 }
 
@@ -157,16 +168,52 @@ pub fn sleep(ticks: i64) {
 }
 
 pub fn donate_to(donor: Arc<Thread>, receiver: Arc<Thread>) {
+    #[cfg(feature = "debug")]
+    kprintln!(
+        "[DEBUG donate_to] Donating - donor: {}, receiver: {}",
+        donor.id(),
+        receiver.id()
+    );
+
     let mut donors = donor.donors();
 
-    donors.insert(donor.id(), donor);
+    donors.insert(donor.id(), donor.clone());
 
     for (_, thread) in donors {
         receiver.add_donor(thread);
     }
 
+    // Update the scheduler since receiver's effective priority changes
+    Manager::get()
+        .scheduler
+        .lock()
+        .change_priority(receiver.clone(), receiver.effective_priority());
+
     if let Some(lock) = receiver.waits_on() {
         let next_receiver = lock.holder().unwrap();
-        donate_to(receiver, next_receiver);
+
+        if next_receiver.effective_priority() < receiver.effective_priority() {
+            donate_to(donor, next_receiver);
+        }
+    }
+}
+
+pub fn remove_donation(donor: Arc<Thread>, receiver: Arc<Thread>) {
+    #[cfg(feature = "debug")]
+    kprintln!(
+        "[DEBUG remove_donation] Removing donation - donor: {}, receiver: {}",
+        donor.id(),
+        receiver.id()
+    );
+    receiver.remove_donor(donor.clone());
+
+    Manager::get()
+        .scheduler
+        .lock()
+        .change_priority(receiver.clone(), receiver.effective_priority());
+
+    if let Some(lock) = receiver.waits_on() {
+        let next_receiver = lock.holder().unwrap();
+        remove_donation(donor, next_receiver);
     }
 }

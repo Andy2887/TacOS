@@ -14,6 +14,20 @@ impl Schedule for Priority {
     fn register(&mut self, thread: Arc<Thread>) {
         let priority = thread.effective_priority();
         let tid = thread.id();
+
+        #[cfg(feature = "debug")]
+        kprintln!("[DEBUG register] tid: {}, priority: {}", tid, priority);
+
+        #[cfg(feature = "debug")]
+        {
+            kprintln!("[DEBUG register] Other threads in scheduler:");
+            for (pri, threads) in self.priority_to_thread.iter().rev() {
+                for t in threads.iter() {
+                    kprintln!("[DEBUG register]   tid: {}, priority: {}", t.id(), pri);
+                }
+            }
+        }
+
         self.priority_to_thread
             .entry(priority)
             .or_default()
@@ -22,6 +36,16 @@ impl Schedule for Priority {
     }
 
     fn schedule(&mut self) -> Option<Arc<Thread>> {
+        #[cfg(feature = "debug")]
+        {
+            kprintln!("[DEBUG schedule] Threads in scheduler (sorted by priority):");
+            for (pri, threads) in self.priority_to_thread.iter().rev() {
+                for t in threads.iter() {
+                    kprintln!("[DEBUG schedule]   tid: {}, priority: {}", t.id(), pri);
+                }
+            }
+        }
+
         // Find the highest priority bucket
         if let Some(bucket) = self.priority_to_thread.pop_last() {
             let (priority, mut thread_deque) = bucket;
@@ -34,6 +58,15 @@ impl Schedule for Priority {
                 self.priority_to_thread.insert(priority, thread_deque);
             }
 
+            #[cfg(feature = "debug")]
+            if let Some(ref t) = thread {
+                kprintln!(
+                    "[DEBUG schedule] Chosen thread - tid: {}, priority: {}",
+                    t.id(),
+                    priority
+                );
+            }
+
             thread
         } else {
             None
@@ -43,6 +76,13 @@ impl Schedule for Priority {
     fn change_priority(&mut self, thread: Arc<Thread>, priority: u32) {
         let tid = thread.id();
         if let Some(old_priority) = self.thread_to_priority.get(&tid).copied() {
+            #[cfg(feature = "debug")]
+            kprintln!(
+                "[DEBUG change_priority] BEFORE - tid: {}, priority: {}",
+                tid,
+                old_priority
+            );
+
             self.thread_to_priority
                 .entry(tid)
                 .and_modify(|v| *v = priority);
@@ -60,6 +100,13 @@ impl Schedule for Priority {
                 .entry(priority)
                 .or_default()
                 .push_back(thread);
+
+            #[cfg(feature = "debug")]
+            kprintln!(
+                "[DEBUG change_priority] AFTER - tid: {}, priority: {}",
+                tid,
+                priority
+            );
         }
     }
 

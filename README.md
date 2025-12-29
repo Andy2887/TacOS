@@ -19,61 +19,57 @@ Fixed: `Workspace/> cargo run -F test-user,debug -- -append args-none`
 ### Fast commands
 priority-condvar Test Case:
 Print Debugging:
-- `cargo run -F test-schedule,debug -- -append priority-preempt`
+- `cargo run -F test-schedule,debug -- -append priority-condvar`
 Debugger (in tool):
 - `cargo gdb -c priority-condvar`
 
-### Plan
-Priority Donation Plan
-Plan:
-1, In sleep.rs,
-the sleep lock will keep track of the thread currently holding the lock.
-
-acquire(): Assume L holds a lock and H tries to acquire it, we add H's information to "donation" field in L.
-
-If L is also waiting for another lock, we will recursively call donate() to pass the donation down.
-
-We will also update the priority in the scheduler in our donate() function.
-
-release(): We remove H's information from "donation" field from L.
-
-2, In imp.rs
-We add a new field called "donation". This is a BTreeMap storing all of the donating threads. The key is the **actual priority** of the thread, and the value is the reference of the thread.
-
-Add a "wait_on" field, this stores the lock the thread is waiting on. 
-
-We will also modify get_priority() to return effective priority
-
-
-Example 1: multiple donation
-
-1, We have L holding the lock.
-
-2, We have H1, H2, H3 trying to acquire the lock.
-
-In this case, H1, H2 and H3 will call donate() function and add themselves to the "donation" deque of L.
-
-In the donate() function, L's priority in scheduler will be updated.
-
-3, After L finishes using, donation field will be cleared, L's priority will be demoted to its ordinary priority. We remove "lock_owner" from the lock. We will call schedule() so that L yield to scheduler.
-
-Example 2: chained donation
-
-1, We have L holding lock A.
-
-2, We have M holding lock B, and it tries to acquire lock A.
-
-In this case, he will donate to A. 
-
-3, We have H trying to acquire lock B.
-
-In this case, he will call donate(). Donate will recursively being called, because it checks "waits_on" field of M and discoveres that M is also waiting for another field. Each donate() also updates the scheduler.
-
-Note: the donate() function must pass all the donations of the current thread down to the next thread.
-
-For example, assume M starts working, H donates to M, and M tries to acquire a lock that L has. In this case, M must contribute all of its donations down to L so that L has H's priority.
-
-
 ##### To Do
+1, fix priority-condvar
 
-1, Update functions to use priority() instead of load
+[603 ms] we are going to notify one thread
+[619 ms] [THREAD] Wake up child(6)[Blocked] with priority 30
+[620 ms] [REGISTER] tid: 6, priority: 30
+[620 ms] [REGISTER] Other threads in scheduler (sorted by priority):
+[620 ms] [REGISTER]   tid: 2, priority: 0
+[621 ms] [THREAD] current thread priority: 0
+[621 ms] [THREAD] Schedule() is called!
+[622 ms] [REGISTER] tid: 0, priority: 0
+[622 ms] [REGISTER] Other threads in scheduler (sorted by priority):
+[623 ms] [REGISTER]   tid: 6, priority: 30
+[623 ms] [REGISTER]   tid: 2, priority: 0
+[623 ms] [SCHEDULE] Threads in scheduler (sorted by priority):
+[624 ms] [SCHEDULE]   tid: 6, priority: 30
+[624 ms] [SCHEDULE]   tid: 2, priority: 0
+[624 ms] [SCHEDULE]   tid: 0, priority: 0
+[624 ms] [SCHEDULE] Chosen thread - tid: 6, priority: 30
+[625 ms] [THREAD] switch from test(0)[Ready]
+[625 ms] [THREAD] switch to child(6)[Running]
+[626 ms] [DEBUG donate_to] Donating - donor: 6, receiver: 0
+[647 ms] [CHANGE_PRIORITY] BEFORE - tid: 0, priority: 0
+[651 ms] [CHANGE_PRIORITY] AFTER - tid: 0, priority: 30
+[652 ms] [TRAP] enter trap handler
+[652 ms] [TRAP] Interrupt(SupervisorTimer), tval=0x0, sepc=0xffffffc080213218
+[652 ms] [DEBUG] current_tick: 3
+[653 ms] [DEBUG] sleep_list:
+[653 ms] [DEBUG] sleep_list ends
+[653 ms] [REGISTER] tid: 6, priority: 30
+[653 ms] [REGISTER] Other threads in scheduler (sorted by priority):
+[654 ms] [REGISTER]   tid: 0, priority: 30
+[654 ms] [REGISTER]   tid: 2, priority: 0
+[654 ms] [SCHEDULE] Threads in scheduler (sorted by priority):
+[655 ms] [SCHEDULE]   tid: 0, priority: 30
+[655 ms] [SCHEDULE]   tid: 6, priority: 30
+[655 ms] [SCHEDULE]   tid: 2, priority: 0
+[655 ms] [SCHEDULE] Chosen thread - tid: 0, priority: 30
+[656 ms] [THREAD] switch from child(6)[Ready]
+[656 ms] [THREAD] switch to test(0)[Running]
+
+So in priority-condvar test case, the mutex is implemented using the sleep lock. I have modified sleep lock so that it will donate to the lock owner whenever the current thread has higher priority than the lock owner. 
+
+This causes an error in the test case. What priority-condvar is doing is it creates a bunch of children threads and put them to sleep using a mutex and a condvar. Then, it wake them up one by one and finally the main thread exists. When the children thread wakes up and calls lock.lock() (condvar.rs:27), it donates to the owner of the lock - the main thread, blocking itself and yielding to main thread. Therefore, the child thread never finishes the job. 
+
+So how could I solve this issue?
+
+Note: the test case is at test/schedule/priority/condvar.rs, the sleep lock implementation is at src/sync/sleep.rs. You could also check src/thread.rs for relevant methods.
+
+2, fix donation test cases
