@@ -2,7 +2,7 @@
 
 > Pintos reimplemented in Rust for riscv64.
 
-This repo contains my implementation of Tacos.
+This repo contains my implementation of TacOS - OS course project at Peking University.
 
 # Progress
 
