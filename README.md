@@ -14,13 +14,15 @@ This repo contains skeleton code for undergraduate Operating System course honor
 Original: `Workspace/> cargo -F test-user,debug -- -append args-none`
 Fixed: `Workspace/> cargo run -F test-user,debug -- -append args-none`
 
-2, Some of the dependencies in the enviornment need to be depreciated.
+2, Some of the dependencies in the enviornment need to be depreciated for the project to compile.
 
 ### Fast commands
-donation-one Test Case:
+donation-sema Test Case:
 Print Debugging:
-- `cargo run -F test-schedule,debug -- -append donation-one`
+- `cargo run -F test-schedule,debug -- -append donation-sema`
 
 ##### To Do
-1, fix donation-nest.
+1, fix donation-sema
+
+
 

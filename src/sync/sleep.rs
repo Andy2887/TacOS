@@ -5,10 +5,11 @@ use core::cell::RefCell;
 use crate::kprintln;
 use crate::sync::{Lock, Semaphore};
 use crate::thread::{self, current, donate_to, Thread};
+use core::sync::atomic::{AtomicUsize, Ordering};
 
 /// Sleep lock. Uses [`Semaphore`] under the hood.
 pub struct Sleep {
-    id: usize,
+    pub id: usize,
     inner: Semaphore,
     holder: RefCell<Option<Arc<Thread>>>,
 }
@@ -23,28 +24,39 @@ impl Default for Sleep {
     }
 }
 
+// A global counter that starts at 0
+static NEXT_LOCK_ID: AtomicUsize = AtomicUsize::new(0);
+
 fn generate_id() -> usize {
-    let val = 0;
-    &val as *const i32 as usize
+    // fetch_add returns the previous value and increments it by 1 atomically
+    NEXT_LOCK_ID.fetch_add(1, Ordering::SeqCst)
 }
 
 impl Lock for Sleep {
     fn acquire(&self) {
         #[cfg(feature = "debug")]
         kprintln!(
-            "[DEBUG acquire] Thread {} acquiring sleep lock",
+            "[DEBUG acquire] Thread {} trying to acquire sleep lock",
             thread::current().id()
         );
 
         let current = current();
         if let Some(holder) = self.holder() {
             if holder.effective_priority() < current.effective_priority() {
-                donate_to(current.clone(), holder, self.id);
+                donate_to(current.clone(), holder.clone(), self.id);
+                current.set_waits_on(Some(holder), Some(self.id));
             }
         }
 
         self.inner.down();
         self.holder.borrow_mut().replace(thread::current());
+        current.set_waits_on(None, None);
+
+        #[cfg(feature = "debug")]
+        kprintln!(
+            "[DEBUG acquire] Thread {} acquired sleep lock",
+            thread::current().id()
+        );
     }
 
     fn release(&self) {

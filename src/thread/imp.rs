@@ -10,7 +10,6 @@ use core::sync::atomic::{AtomicIsize, AtomicU32, Ordering::SeqCst};
 
 use crate::mem::{kalloc, kfree, PageTable, PG_SIZE};
 use crate::sbi::interrupt;
-use crate::sync::Sleep;
 use crate::thread;
 use crate::thread::{schedule, Manager};
 use crate::userproc::UserProc;
@@ -36,7 +35,8 @@ pub struct Thread {
     status: Mutex<Status>,
     context: Mutex<Context>,
     donation_state: Mutex<DonationData>,
-    waits_on: Option<Arc<Sleep>>,
+    waits_on_thread: Mutex<Option<Arc<Thread>>>,
+    waits_on_lock: Mutex<Option<usize>>,
     pub priority: AtomicU32,
     pub userproc: Option<UserProc>,
     pub pagetable: Option<Mutex<PageTable>>,
@@ -45,7 +45,7 @@ pub struct Thread {
 struct DonationData {
     /// key: actual priority, value: reference of thread
     priorities: BTreeMap<u32, VecDeque<Arc<Thread>>>,
-    /// key: lock id, value: reference of thread
+    /// key: lock id, value: donations of threads related to this lock
     lock: BTreeMap<usize, VecDeque<Arc<Thread>>>,
 }
 
@@ -71,7 +71,8 @@ impl Thread {
                 priorities: BTreeMap::new(),
                 lock: BTreeMap::new(),
             }),
-            waits_on: None,
+            waits_on_thread: Mutex::new(None),
+            waits_on_lock: Mutex::new(None),
             priority: AtomicU32::new(priority),
             userproc,
             pagetable: pagetable.map(Mutex::new),
@@ -174,12 +175,17 @@ impl Thread {
         }
     }
 
-    pub fn waits_on(&self) -> Option<Arc<Sleep>> {
-        self.waits_on.clone()
+    pub fn waits_on_thread(&self) -> Option<Arc<Thread>> {
+        self.waits_on_thread.lock().clone()
     }
 
-    pub fn set_waits_on(&mut self, lock: Option<Arc<Sleep>>) {
-        self.waits_on = lock;
+    pub fn waits_on_lock(&self) -> Option<usize> {
+        self.waits_on_lock.lock().clone()
+    }
+
+    pub fn set_waits_on(&self, thread: Option<Arc<Thread>>, lock_id: Option<usize>) {
+        *self.waits_on_thread.lock() = thread;
+        *self.waits_on_lock.lock() = lock_id;
     }
 
     pub fn set_status(&self, status: Status) {

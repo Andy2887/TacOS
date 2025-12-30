@@ -4,7 +4,6 @@ mod imp;
 pub mod manager;
 pub mod scheduler;
 pub mod switch;
-use crate::sync::Lock;
 use crate::thread;
 
 pub use self::imp::*;
@@ -170,9 +169,10 @@ pub fn sleep(ticks: i64) {
 pub fn donate_to(donor: Arc<Thread>, receiver: Arc<Thread>, lock_id: usize) {
     #[cfg(feature = "debug")]
     kprintln!(
-        "[DEBUG donate_to] Donating - donor: {}, receiver: {}",
+        "[DEBUG donate_to] Donating - donor: {}, receiver: {}, lock_id: {}",
         donor.id(),
-        receiver.id()
+        receiver.id(),
+        lock_id
     );
 
     let mut donors = donor.donors();
@@ -189,31 +189,10 @@ pub fn donate_to(donor: Arc<Thread>, receiver: Arc<Thread>, lock_id: usize) {
         .lock()
         .change_priority(receiver.clone(), receiver.effective_priority());
 
-    if let Some(next_lock) = receiver.waits_on() {
-        let next_receiver = next_lock.holder().unwrap();
-
+    if let Some(next_receiver) = receiver.waits_on_thread() {
+        let next_lock_id = receiver.waits_on_lock().unwrap();
         if next_receiver.effective_priority() < receiver.effective_priority() {
-            donate_to(donor, next_receiver, lock_id);
+            donate_to(donor, next_receiver, next_lock_id);
         }
     }
 }
-
-// pub fn remove_donation(donor: Arc<Thread>, receiver: Arc<Thread>) {
-//     #[cfg(feature = "debug")]
-//     kprintln!(
-//         "[DEBUG remove_donation] Removing donation - donor: {}, receiver: {}",
-//         donor.id(),
-//         receiver.id()
-//     );
-//     receiver.remove_donor(donor.clone());
-
-//     Manager::get()
-//         .scheduler
-//         .lock()
-//         .change_priority(receiver.clone(), receiver.effective_priority());
-
-//     if let Some(lock) = receiver.waits_on() {
-//         let next_receiver = lock.holder().unwrap();
-//         remove_donation(donor, next_receiver);
-//     }
-// }

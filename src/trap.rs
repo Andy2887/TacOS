@@ -50,19 +50,19 @@ pub fn check_sleeping_threads() {
         let current_tick = timer_ticks();
         let mut sleep_list = SLEEP_LIST.lock();
 
-        #[cfg(feature = "debug")]
-        kprintln!("[DEBUG] current_tick: {}", current_tick);
+        // #[cfg(feature = "debug")]
+        // kprintln!("[DEBUG] current_tick: {}", current_tick);
 
-        #[cfg(feature = "debug")]
-        kprintln!("[DEBUG] sleep_list:");
+        // #[cfg(feature = "debug")]
+        // kprintln!("[DEBUG] sleep_list:");
 
-        #[cfg(feature = "debug")]
-        for (wake_tick, thread) in sleep_list.iter() {
-            kprintln!("[DEBUG]   wake_tick: {}, thread: {:?}", wake_tick, thread);
-        }
+        // #[cfg(feature = "debug")]
+        // for (wake_tick, thread) in sleep_list.iter() {
+        //     kprintln!("[DEBUG]   wake_tick: {}, thread: {:?}", wake_tick, thread);
+        // }
 
-        #[cfg(feature = "debug")]
-        kprintln!("[DEBUG] sleep_list ends");
+        // #[cfg(feature = "debug")]
+        // kprintln!("[DEBUG] sleep_list ends");
 
         let mut to_wake = Vec::new();
 
