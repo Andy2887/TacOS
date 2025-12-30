@@ -1,6 +1,7 @@
-use alloc::collections::VecDeque;
+use alloc::collections::vec_deque::VecDeque;
 use alloc::sync::Arc;
-use core::cell::{Cell, RefCell};
+use sync::Mutex;
+use sync::Spin;
 
 use crate::sbi;
 use crate::thread::{self, Thread};
@@ -13,21 +14,23 @@ use crate::thread::{self, Thread};
 /// sema.down();
 /// sema.up();
 /// ```
-#[derive(Clone)]
 pub struct Semaphore {
-    value: Cell<usize>,
-    waiters: RefCell<VecDeque<Arc<Thread>>>,
+    inner: Mutex<SemaInner, Spin>,
 }
 
-unsafe impl Sync for Semaphore {}
-unsafe impl Send for Semaphore {}
+struct SemaInner {
+    value: usize,
+    waiters: VecDeque<Arc<Thread>>,
+}
 
 impl Semaphore {
     /// Creates a new semaphore of initial value n.
-    pub const fn new(n: usize) -> Self {
-        Semaphore {
-            value: Cell::new(n),
-            waiters: RefCell::new(VecDeque::new()),
+    pub fn new(n: usize) -> Self {
+        Self {
+            inner: Mutex::new(SemaInner {
+                value: n,
+                waiters: VecDeque::new(),
+            }),
         }
     }
 
@@ -37,13 +40,12 @@ impl Semaphore {
 
         // Is semaphore available?
         while self.value() == 0 {
-            // `push_front` ensures to wake up threads in a fifo manner
-            self.waiters.borrow_mut().push_front(thread::current());
-
+            self.inner.lock().waiters.push_back(thread::current());
             // Block the current thread until it's awakened by an `up` operation
             thread::block();
         }
-        self.value.set(self.value() - 1);
+
+        self.inner.lock().value -= 1;
 
         sbi::interrupt::set(old);
     }
@@ -51,13 +53,36 @@ impl Semaphore {
     /// V operation
     pub fn up(&self) {
         let old = sbi::interrupt::set(false);
-        let count = self.value.replace(self.value() + 1);
+        let mut guard = self.inner.lock();
+        let count = guard.value;
+        guard.value += 1;
 
-        // Check if we need to wake up a sleeping waiter
-        if let Some(thread) = self.waiters.borrow_mut().pop_back() {
+        // Check if we need to wake up a sleeping waiter (highest effective priority first)
+        let thread_to_wake = if !guard.waiters.is_empty() {
             assert_eq!(count, 0);
 
-            thread::wake_up(thread.clone());
+            // Find the index of the thread with the highest effective priority
+            let mut max_priority = 0;
+            let mut max_index = 0;
+
+            for (index, thread) in guard.waiters.iter().enumerate() {
+                let eff_priority = thread.effective_priority();
+                if index == 0 || eff_priority > max_priority {
+                    max_priority = eff_priority;
+                    max_index = index;
+                }
+            }
+
+            // Remove and return the thread with the highest effective priority
+            guard.waiters.remove(max_index)
+        } else {
+            None
+        };
+
+        guard.release();
+
+        if let Some(t) = thread_to_wake {
+            thread::wake_up(t);
         }
 
         sbi::interrupt::set(old);
@@ -65,6 +90,6 @@ impl Semaphore {
 
     /// Get the current value of a semaphore
     pub fn value(&self) -> usize {
-        self.value.get()
+        self.inner.lock().value
     }
 }

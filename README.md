@@ -2,7 +2,14 @@
 
 > Pintos reimplemented in Rust for riscv64.
 
-This repo contains skeleton code for undergraduate Operating System course honor track at Peking University.
+This repo contains my implementation of Tacos.
+
+# Progress
+
+- ✅ Lab 0 - Completed
+- ✅ Lab 1 - Completed
+- ⬜ Lab 2 - Not Started
+- ⬜ Lab 3 - Not Started
 
 # Documentation
 
@@ -14,9 +21,7 @@ This repo contains skeleton code for undergraduate Operating System course honor
 Original: `Workspace/> cargo -F test-user,debug -- -append args-none`
 Fixed: `Workspace/> cargo run -F test-user,debug -- -append args-none`
 
-### Fast commands
-Alarm Multiple Test Case:
-Print Debugging:
-- `cargo run -F test-schedule,debug -- -append alarm-multiple`
-Debugger (in tool):
-- `cargo gdb -c alarm-multiple`
+2, Some of the dependencies in the enviornment need to be depreciated for the project to compile.
+
+
+

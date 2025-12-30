@@ -44,7 +44,9 @@ fn high(pair: Arc<(Sleep, Sleep)>) {
 pub fn main() {
     let pair = Arc::new((Sleep::default(), Sleep::default()));
 
-    let (m_lock, _) = &*pair;
+    let (m_lock, h_lock) = &*pair;
+
+    kprintln!("Middle lock id: {}, High lock id: {}", m_lock.id, h_lock.id);
 
     m_lock.acquire();
 

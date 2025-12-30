@@ -1,7 +1,8 @@
 use alloc::collections::VecDeque;
 use alloc::sync::Arc;
 
-use crate::thread::{Schedule, Thread};
+use crate::thread::Schedule;
+use crate::thread::Thread;
 
 /// FIFO scheduler.
 #[derive(Default)]

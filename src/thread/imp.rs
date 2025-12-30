@@ -1,6 +1,8 @@
 //! Implementation of kernel threads
 
 use alloc::boxed::Box;
+use alloc::collections::btree_map::BTreeMap;
+use alloc::collections::VecDeque;
 use alloc::sync::Arc;
 use core::arch::global_asm;
 use core::fmt::{self, Debug};
@@ -8,8 +10,10 @@ use core::sync::atomic::{AtomicIsize, AtomicU32, Ordering::SeqCst};
 
 use crate::mem::{kalloc, kfree, PageTable, PG_SIZE};
 use crate::sbi::interrupt;
-use crate::thread::Manager;
+use crate::thread;
+use crate::thread::{schedule, Manager};
 use crate::userproc::UserProc;
+use core::sync::atomic::Ordering;
 
 pub const PRI_DEFAULT: u32 = 31;
 pub const PRI_MAX: u32 = 63;
@@ -30,9 +34,19 @@ pub struct Thread {
     stack: usize,
     status: Mutex<Status>,
     context: Mutex<Context>,
+    donation_state: Mutex<DonationData>,
+    waits_on_thread: Mutex<Option<Arc<Thread>>>,
+    waits_on_lock: Mutex<Option<usize>>,
     pub priority: AtomicU32,
     pub userproc: Option<UserProc>,
     pub pagetable: Option<Mutex<PageTable>>,
+}
+
+struct DonationData {
+    /// key: actual priority, value: reference of thread
+    priorities: BTreeMap<u32, VecDeque<Arc<Thread>>>,
+    /// key: lock id, value: donations of threads related to this lock
+    lock: BTreeMap<usize, VecDeque<Arc<Thread>>>,
 }
 
 impl Thread {
@@ -53,6 +67,12 @@ impl Thread {
             stack,
             status: Mutex::new(Status::Ready),
             context: Mutex::new(Context::new(stack, entry)),
+            donation_state: Mutex::new(DonationData {
+                priorities: BTreeMap::new(),
+                lock: BTreeMap::new(),
+            }),
+            waits_on_thread: Mutex::new(None),
+            waits_on_lock: Mutex::new(None),
             priority: AtomicU32::new(priority),
             userproc,
             pagetable: pagetable.map(Mutex::new),
@@ -69,6 +89,103 @@ impl Thread {
 
     pub fn status(&self) -> Status {
         *self.status.lock()
+    }
+
+    pub fn priority(&self) -> u32 {
+        self.priority.load(Ordering::Relaxed)
+    }
+
+    pub fn effective_priority(&self) -> u32 {
+        let state = self.donation_state.lock();
+        if state.priorities.is_empty() {
+            return self.priority();
+        }
+
+        let &effective_priority = state.priorities.keys().next_back().unwrap();
+        assert!(effective_priority > self.priority());
+        effective_priority
+    }
+
+    pub fn donors(&self) -> VecDeque<Arc<Thread>> {
+        self.donation_state
+            .lock()
+            .priorities
+            .values()
+            .flatten()
+            .cloned()
+            .collect()
+    }
+
+    pub fn add_donor(&self, thread: Arc<Thread>, lock_id: usize) {
+        #[cfg(feature = "debug")]
+        kprintln!(
+            "[DEBUG add_donor] Thread {} donate priority {} to thread {}",
+            thread.id(),
+            thread.priority(),
+            self.id(),
+        );
+
+        let priority = thread.priority();
+
+        let mut guard = self.donation_state.lock();
+
+        guard
+            .priorities
+            .entry(priority)
+            .or_default()
+            .push_back(thread.clone());
+
+        guard
+            .lock
+            .entry(lock_id)
+            .or_default()
+            .push_back(thread.clone());
+    }
+
+    pub fn remove_donors(&self, lock_id: usize) {
+        #[cfg(feature = "debug")]
+        kprintln!(
+            "[DEBUG remove_donors] Thread {} removing all donors related to lock {}",
+            self.id(),
+            lock_id
+        );
+        let mut guard = self.donation_state.lock();
+
+        let bucket = {
+            guard.lock.get(&lock_id).cloned() // Ensure this is .cloned() if it's an Option<&T>
+        };
+
+        if let Some(bucket) = bucket {
+            for queue in guard.priorities.values_mut() {
+                queue.retain(|thread| {
+                    !bucket
+                        .iter()
+                        .any(|to_remove| Arc::ptr_eq(to_remove, thread))
+                });
+            }
+
+            guard.priorities.retain(|_, queue| !queue.is_empty());
+            guard.lock.remove(&lock_id);
+        } else {
+            #[cfg(feature = "debug")]
+            kprintln!(
+                "[DEBUG remove_donors] No donors found releated to lock {}",
+                lock_id
+            );
+        }
+    }
+
+    pub fn waits_on_thread(&self) -> Option<Arc<Thread>> {
+        self.waits_on_thread.lock().clone()
+    }
+
+    pub fn waits_on_lock(&self) -> Option<usize> {
+        self.waits_on_lock.lock().clone()
+    }
+
+    pub fn set_waits_on(&self, thread: Option<Arc<Thread>>, lock_id: Option<usize>) {
+        *self.waits_on_thread.lock() = thread;
+        *self.waits_on_lock.lock() = lock_id;
     }
 
     pub fn set_status(&self, status: Status) {
@@ -181,6 +298,13 @@ impl Builder {
         kprintln!("[THREAD] create {:?}", new_thread);
 
         Manager::get().register(new_thread.clone());
+
+        // If the new spawned thread has higher priority than the current thread,
+        // the current thread will yield
+
+        if new_thread.effective_priority() > thread::get_priority() {
+            schedule();
+        }
 
         // Off you go
         new_thread

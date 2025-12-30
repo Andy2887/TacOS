@@ -10,7 +10,8 @@ use crate::mem::KernelPgTable;
 use crate::sbi::interrupt;
 use crate::sync::Lazy;
 use crate::thread::{
-    schedule, switch, Builder, Mutex, Schedule, Scheduler, Status, Thread, MAGIC, PRI_DEFAULT, PRI_MIN
+    schedule, switch, Builder, Mutex, Schedule, Scheduler, Status, Thread, MAGIC, PRI_DEFAULT,
+    PRI_MIN,
 };
 
 /* --------------------------------- MANAGER -------------------------------- */
@@ -28,7 +29,14 @@ impl Manager {
     pub fn get() -> &'static Self {
         static TMANAGER: Lazy<Manager> = Lazy::new(|| {
             // Manully create initial thread.
-            let initial = Arc::new(Thread::new("Initial", bootstack as usize, PRI_DEFAULT, 0, None, None));
+            let initial = Arc::new(Thread::new(
+                "Initial",
+                bootstack as usize,
+                PRI_DEFAULT,
+                0,
+                None,
+                None,
+            ));
             unsafe { (bootstack as *mut usize).write(MAGIC) };
             initial.set_status(Status::Running);
 
@@ -73,30 +81,50 @@ impl Manager {
     pub fn schedule(&self) {
         let old = interrupt::set(false);
 
-        let next = self.scheduler.lock().schedule();
+        // Extract everything we need while holding locks, then release them
+        let switch_info = {
+            let mut scheduler = self.scheduler.lock();
+            let mut current_thread = self.current.lock();
 
-        // Make sure there's at least one thread runnable.
-        assert!(
-            self.current.lock().status() == Status::Running || next.is_some(),
-            "no thread is ready"
-        );
-        assert!(!self.current.lock().overflow(), "Current thread has overflowed its stack.");
+            // If the current thread is currently running, change the current thread to ready
+            // and add it to scheduler
+            if current_thread.status() == Status::Running {
+                current_thread.set_status(Status::Ready);
+                scheduler.register(current_thread.clone());
+            }
 
-        if let Some(next) = next {
-            assert_eq!(next.status(), Status::Ready);
-            assert!(!next.overflow(), "Next thread has overflowed its stack.");
-            next.set_status(Status::Running);
+            let next = scheduler.schedule();
 
-            // Update the current thread to the next running thread
-            let previous = mem::replace(self.current.lock().deref_mut(), next);
+            // Make sure there's at least one thread runnable.
+            assert!(next.is_some(), "no thread is ready");
+            assert!(
+                !current_thread.overflow(),
+                "Current thread has overflowed its stack."
+            );
+
+            if let Some(next) = next {
+                assert_eq!(next.status(), Status::Ready);
+                assert!(!next.overflow(), "Next thread has overflowed its stack.");
+                next.set_status(Status::Running);
+
+                // Update the current thread to the next running thread
+                let previous = mem::replace(current_thread.deref_mut(), next);
+
+                // Retrieve the raw pointers of two threads' context
+                let old_ctx = previous.context();
+                let new_ctx = current_thread.context();
+
+                Some((previous, old_ctx, new_ctx))
+            } else {
+                None
+            }
+        }; // <-- Both locks released here
+
+        // Now switch WITHOUT holding any locks
+        // WARNING: This function call may not return, so don't expect any value to be dropped.
+        if let Some((previous, old_ctx, new_ctx)) = switch_info {
             #[cfg(feature = "debug")]
             kprintln!("[THREAD] switch from {:?}", previous);
-
-            // Retrieve the raw pointers of two threads' context
-            let old_ctx = previous.context();
-            let new_ctx = self.current.lock().context();
-
-            // WARNING: This function call may not return, so don't expect any value to be dropped.
 
             unsafe { switch::switch(Arc::into_raw(previous).cast(), old_ctx, new_ctx) }
 
@@ -129,12 +157,9 @@ impl Manager {
                 // A thread's resources should be released at this point
                 self.all.lock().retain(|t| t.id() != previous.id());
             }
-            Status::Running => {
-                previous.set_status(Status::Ready);
-                self.scheduler.lock().register(previous);
-            }
+            Status::Running => {}
             Status::Blocked => {}
-            Status::Ready => unreachable!(),
+            Status::Ready => {}
         }
 
         if let Some(pt) = self.current.lock().pagetable.as_ref() {

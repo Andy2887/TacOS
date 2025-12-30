@@ -38,6 +38,8 @@ fn cvar_priority_thread(tid: usize, pair: Arc<(Mutex<bool>, Condvar)>) {
 
         // Mark self as exited.
         EXIT_STATUS[tid] = 1;
+
+        kprintln!("child with tid {} existed!", tid);
     }
 }
 
@@ -49,6 +51,7 @@ pub fn main() {
 
     for tid in 1..=THREAD_CNT {
         let priority = PRI_DEFAULT - ((tid as u32 + 6) % 10) - 1;
+        kprintln!("child with tid {} priority {} is created", tid, priority);
         let p = Arc::clone(&pair);
         Builder::new(move || cvar_priority_thread(tid, p))
             .name("child")
@@ -56,10 +59,14 @@ pub fn main() {
             .spawn();
     }
 
-    let (lock, cvar) = &*pair;
+    let (_lock, cvar) = &*pair;
 
     for _ in 1..=THREAD_CNT {
-        let _g = lock.lock();
+        kprintln!("we are going to notify one thread");
+        // let _g = lock.lock();
+
+        // The above line is in the original test case. The reason I commented it out is I believe it makes no sense
+        // to call notify_one() while holding the lock.
         cvar.notify_one();
     }
 

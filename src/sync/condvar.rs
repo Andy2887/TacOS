@@ -42,13 +42,14 @@
 //! ```
 //!
 
-use alloc::collections::VecDeque;
+use alloc::collections::{BTreeMap, VecDeque};
 use alloc::sync::Arc;
 use core::cell::RefCell;
 
 use crate::sync::{Lock, MutexGuard, Semaphore};
+use crate::thread;
 
-pub struct Condvar(RefCell<VecDeque<Arc<Semaphore>>>);
+pub struct Condvar(RefCell<BTreeMap<u32, VecDeque<Arc<Semaphore>>>>);
 
 unsafe impl Sync for Condvar {}
 unsafe impl Send for Condvar {}
@@ -60,23 +61,44 @@ impl Condvar {
 
     pub fn wait<T, L: Lock>(&self, guard: &mut MutexGuard<'_, T, L>) {
         let sema = Arc::new(Semaphore::new(0));
-        self.0.borrow_mut().push_front(sema.clone());
+        let priority = thread::get_priority();
+        self.0
+            .borrow_mut()
+            .entry(priority)
+            .or_insert_with(VecDeque::new)
+            .push_back(sema.clone());
 
         guard.release();
         sema.down();
         guard.acquire();
     }
 
-    /// Wake up one thread from the waiting list
+    /// Wake up the thread with highest priority from the waiting list
     pub fn notify_one(&self) {
-        if let Some(sema) = self.0.borrow_mut().pop_back() {
-            sema.up();
+        let mut waiters = self.0.borrow_mut();
+
+        if let Some(priority) = waiters.keys().next_back().copied() {
+            let sema = waiters
+                .get_mut(&priority)
+                .and_then(|deque| deque.pop_front());
+
+            if waiters.get(&priority).map_or(false, |d| d.is_empty()) {
+                waiters.remove(&priority);
+            }
+
+            if let Some(s) = sema {
+                s.up();
+            }
         }
     }
 
     /// Wake up all waiting threads
     pub fn notify_all(&self) {
-        self.0.borrow().iter().for_each(|s| s.up());
+        self.0
+            .borrow()
+            .values()
+            .flat_map(|deque| deque.iter())
+            .for_each(|s| s.up());
         self.0.borrow_mut().clear();
     }
 }
