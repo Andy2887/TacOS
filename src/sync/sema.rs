@@ -1,4 +1,3 @@
-use alloc::collections::btree_map::BTreeMap;
 use alloc::collections::vec_deque::VecDeque;
 use alloc::sync::Arc;
 use sync::Mutex;
@@ -21,7 +20,7 @@ pub struct Semaphore {
 
 struct SemaInner {
     value: usize,
-    waiters: BTreeMap<u32, VecDeque<Arc<Thread>>>,
+    waiters: VecDeque<Arc<Thread>>,
 }
 
 impl Semaphore {
@@ -30,7 +29,7 @@ impl Semaphore {
         Self {
             inner: Mutex::new(SemaInner {
                 value: n,
-                waiters: BTreeMap::new(),
+                waiters: VecDeque::new(),
             }),
         }
     }
@@ -41,13 +40,7 @@ impl Semaphore {
 
         // Is semaphore available?
         while self.value() == 0 {
-            let priority = thread::get_priority();
-            self.inner
-                .lock()
-                .waiters
-                .entry(priority)
-                .or_insert_with(VecDeque::new)
-                .push_back(thread::current());
+            self.inner.lock().waiters.push_back(thread::current());
             // Block the current thread until it's awakened by an `up` operation
             thread::block();
         }
@@ -64,21 +57,24 @@ impl Semaphore {
         let count = guard.value;
         guard.value += 1;
 
-        // Check if we need to wake up a sleeping waiter (highest priority first)
-        let thread_to_wake = if let Some(&priority) = guard.waiters.keys().next_back() {
+        // Check if we need to wake up a sleeping waiter (highest effective priority first)
+        let thread_to_wake = if !guard.waiters.is_empty() {
             assert_eq!(count, 0);
 
-            let thread = guard
-                .waiters
-                .get_mut(&priority)
-                .and_then(|deque| deque.pop_front());
+            // Find the index of the thread with the highest effective priority
+            let mut max_priority = 0;
+            let mut max_index = 0;
 
-            // Remove the priority entry if the deque is now empty
-            if guard.waiters.get(&priority).map_or(false, |d| d.is_empty()) {
-                guard.waiters.remove(&priority);
+            for (index, thread) in guard.waiters.iter().enumerate() {
+                let eff_priority = thread.effective_priority();
+                if index == 0 || eff_priority > max_priority {
+                    max_priority = eff_priority;
+                    max_index = index;
+                }
             }
 
-            thread
+            // Remove and return the thread with the highest effective priority
+            guard.waiters.remove(max_index)
         } else {
             None
         };

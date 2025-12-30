@@ -27,7 +27,9 @@ fn low(pair: Arc<(Sleep, Semaphore)>) {
             expected, STATUS
         );
 
+        kprintln!("Low thread calling down! Should switch back to main thread to create medium.");
         sema.down();
+        kprintln!("Low thread accepted donation from high and keeps running!");
         STATUS[1] = Down;
         let expected = [Start, Down, Start, Start];
         assert_eq!(
@@ -35,7 +37,7 @@ fn low(pair: Arc<(Sleep, Semaphore)>) {
             "When low downs, expected states are {:?}. Actual states: {:?}",
             expected, STATUS
         );
-
+        kprintln!("Low thread releasing the lock! Will switch back to high thread.");
         lock.release();
         let expected = [Start, Down, Finish, Finish];
         assert_eq!(
@@ -43,6 +45,8 @@ fn low(pair: Arc<(Sleep, Semaphore)>) {
             "When low releases, expected states are {:?}. Actual states: {:?}",
             expected, STATUS
         );
+
+        kprintln!("Low exists! Main should run.");
 
         STATUS[1] = Finish;
     }
@@ -52,6 +56,7 @@ fn medium(pair: Arc<(Sleep, Semaphore)>) {
     let (_, sema) = &*pair;
 
     unsafe {
+        kprintln!("Medium thread calling down! Should switch back to main thread to create high.");
         sema.down();
         STATUS[2] = Down;
 
@@ -61,7 +66,7 @@ fn medium(pair: Arc<(Sleep, Semaphore)>) {
             "When medium exits, expected states are {:?}. Actual states: {:?}",
             expected, STATUS
         );
-
+        kprintln!("Medium exists! Low should run.");
         STATUS[2] = Finish;
     }
 }
@@ -70,7 +75,11 @@ fn high(pair: Arc<(Sleep, Semaphore)>) {
     let (lock, sema) = &*pair;
 
     unsafe {
+        kprintln!(
+            "High thread failed to acquire lock! Should donate to low thread and switch to main."
+        );
         lock.acquire();
+        kprintln!("High thread acquires the lock!");
         STATUS[3] = Acquire;
         let expected = [Start, Down, Start, Acquire];
         assert_eq!(
@@ -92,7 +101,7 @@ fn high(pair: Arc<(Sleep, Semaphore)>) {
             "When high exits, expected states are {:?}. Actual states: {:?}",
             expected, STATUS
         );
-
+        kprintln!("High thread exists! Medium should run.");
         STATUS[3] = Finish;
     }
 }
@@ -113,6 +122,7 @@ pub fn main() {
     create(high, PRI_DEFAULT + 5);
 
     let (_, sema) = &*pair;
+    kprintln!("Main thread calling up! This should wake up low thread.");
     sema.up();
 
     let expected = [Start, Finish, Finish, Finish];
