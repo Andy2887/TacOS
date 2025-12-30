@@ -4,10 +4,11 @@ use core::cell::RefCell;
 #[cfg(feature = "debug")]
 use crate::kprintln;
 use crate::sync::{Lock, Semaphore};
-use crate::thread::{self, current, donate_to, remove_donation, Thread};
+use crate::thread::{self, current, donate_to, Thread};
 
 /// Sleep lock. Uses [`Semaphore`] under the hood.
 pub struct Sleep {
+    id: usize,
     inner: Semaphore,
     holder: RefCell<Option<Arc<Thread>>>,
 }
@@ -15,10 +16,16 @@ pub struct Sleep {
 impl Default for Sleep {
     fn default() -> Self {
         Self {
+            id: generate_id(),
             inner: Semaphore::new(1),
             holder: Default::default(),
         }
     }
+}
+
+fn generate_id() -> usize {
+    let val = 0;
+    &val as *const i32 as usize
 }
 
 impl Lock for Sleep {
@@ -29,25 +36,14 @@ impl Lock for Sleep {
             thread::current().id()
         );
 
-        let holder_option = self.holder();
-
-        let mut donated = false;
-
-        if let Some(ref holder) = holder_option {
-            let current = current();
+        let current = current();
+        if let Some(holder) = self.holder() {
             if holder.effective_priority() < current.effective_priority() {
-                donate_to(current, holder.clone());
-                donated = true;
+                donate_to(current.clone(), holder, self.id);
             }
         }
 
         self.inner.down();
-        if donated {
-            if let Some(holder) = holder_option {
-                remove_donation(current(), holder);
-            }
-        }
-
         self.holder.borrow_mut().replace(thread::current());
     }
 
@@ -63,7 +59,8 @@ impl Lock for Sleep {
             &thread::current()
         ));
 
-        self.holder.borrow_mut().take().unwrap();
+        let holder = self.holder.borrow_mut().take().unwrap();
+        holder.remove_donors(self.id);
         self.inner.up();
     }
 

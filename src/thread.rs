@@ -167,7 +167,7 @@ pub fn sleep(ticks: i64) {
     block();
 }
 
-pub fn donate_to(donor: Arc<Thread>, receiver: Arc<Thread>) {
+pub fn donate_to(donor: Arc<Thread>, receiver: Arc<Thread>, lock_id: usize) {
     #[cfg(feature = "debug")]
     kprintln!(
         "[DEBUG donate_to] Donating - donor: {}, receiver: {}",
@@ -177,10 +177,10 @@ pub fn donate_to(donor: Arc<Thread>, receiver: Arc<Thread>) {
 
     let mut donors = donor.donors();
 
-    donors.insert(donor.id(), donor.clone());
+    donors.push_back(donor.clone());
 
-    for (_, thread) in donors {
-        receiver.add_donor(thread);
+    for thread in donors {
+        receiver.add_donor(thread, lock_id);
     }
 
     // Update the scheduler since receiver's effective priority changes
@@ -189,31 +189,31 @@ pub fn donate_to(donor: Arc<Thread>, receiver: Arc<Thread>) {
         .lock()
         .change_priority(receiver.clone(), receiver.effective_priority());
 
-    if let Some(lock) = receiver.waits_on() {
-        let next_receiver = lock.holder().unwrap();
+    if let Some(next_lock) = receiver.waits_on() {
+        let next_receiver = next_lock.holder().unwrap();
 
         if next_receiver.effective_priority() < receiver.effective_priority() {
-            donate_to(donor, next_receiver);
+            donate_to(donor, next_receiver, lock_id);
         }
     }
 }
 
-pub fn remove_donation(donor: Arc<Thread>, receiver: Arc<Thread>) {
-    #[cfg(feature = "debug")]
-    kprintln!(
-        "[DEBUG remove_donation] Removing donation - donor: {}, receiver: {}",
-        donor.id(),
-        receiver.id()
-    );
-    receiver.remove_donor(donor.clone());
+// pub fn remove_donation(donor: Arc<Thread>, receiver: Arc<Thread>) {
+//     #[cfg(feature = "debug")]
+//     kprintln!(
+//         "[DEBUG remove_donation] Removing donation - donor: {}, receiver: {}",
+//         donor.id(),
+//         receiver.id()
+//     );
+//     receiver.remove_donor(donor.clone());
 
-    Manager::get()
-        .scheduler
-        .lock()
-        .change_priority(receiver.clone(), receiver.effective_priority());
+//     Manager::get()
+//         .scheduler
+//         .lock()
+//         .change_priority(receiver.clone(), receiver.effective_priority());
 
-    if let Some(lock) = receiver.waits_on() {
-        let next_receiver = lock.holder().unwrap();
-        remove_donation(donor, next_receiver);
-    }
-}
+//     if let Some(lock) = receiver.waits_on() {
+//         let next_receiver = lock.holder().unwrap();
+//         remove_donation(donor, next_receiver);
+//     }
+// }

@@ -43,10 +43,10 @@ pub struct Thread {
 }
 
 struct DonationData {
-    /// key: actual priority, value: deque of thread id
-    priorities: BTreeMap<u32, VecDeque<isize>>,
-    /// key: thread id, value: thread reference
-    donors: BTreeMap<isize, Arc<Thread>>,
+    /// key: actual priority, value: reference of thread
+    priorities: BTreeMap<u32, VecDeque<Arc<Thread>>>,
+    /// key: lock id, value: reference of thread
+    lock: BTreeMap<usize, VecDeque<Arc<Thread>>>,
 }
 
 impl Thread {
@@ -69,7 +69,7 @@ impl Thread {
             context: Mutex::new(Context::new(stack, entry)),
             donation_state: Mutex::new(DonationData {
                 priorities: BTreeMap::new(),
-                donors: BTreeMap::new(),
+                lock: BTreeMap::new(),
             }),
             waits_on: None,
             priority: AtomicU32::new(priority),
@@ -96,7 +96,7 @@ impl Thread {
 
     pub fn effective_priority(&self) -> u32 {
         let state = self.donation_state.lock();
-        if state.donors.is_empty() {
+        if state.priorities.is_empty() {
             return self.priority();
         }
 
@@ -105,45 +105,81 @@ impl Thread {
         effective_priority
     }
 
-    pub fn donors(&self) -> BTreeMap<isize, Arc<Thread>> {
-        self.donation_state.lock().donors.clone()
+    pub fn donors(&self) -> VecDeque<Arc<Thread>> {
+        self.donation_state
+            .lock()
+            .priorities
+            .values()
+            .flatten()
+            .cloned()
+            .collect()
     }
 
-    pub fn add_donor(&self, thread: Arc<Thread>) {
+    pub fn add_donor(&self, thread: Arc<Thread>, lock_id: usize) {
+        #[cfg(feature = "debug")]
+        kprintln!(
+            "[DEBUG add_donor] Thread {} donate priority {} to thread {}",
+            thread.id(),
+            thread.priority(),
+            self.id(),
+        );
+
         let priority = thread.priority();
-        let tid = thread.id();
 
         let mut guard = self.donation_state.lock();
 
-        if !guard.donors.contains_key(&tid) {
-            guard.donors.insert(tid, thread);
-            guard.priorities.entry(priority).or_default().push_back(tid);
-        }
+        guard
+            .priorities
+            .entry(priority)
+            .or_default()
+            .push_back(thread.clone());
+
+        guard
+            .lock
+            .entry(lock_id)
+            .or_default()
+            .push_back(thread.clone());
     }
 
-    pub fn remove_donor(&self, thread: Arc<Thread>) {
-        let priority = thread.priority();
-        let tid = thread.id();
-
+    pub fn remove_donors(&self, lock_id: usize) {
+        #[cfg(feature = "debug")]
+        kprintln!(
+            "[DEBUG remove_donors] Thread {} removing all donors related to lock {}",
+            self.id(),
+            lock_id
+        );
         let mut guard = self.donation_state.lock();
 
-        if guard.donors.contains_key(&tid) {
-            guard.donors.remove(&tid);
+        let bucket = {
+            guard.lock.get(&lock_id).cloned() // Ensure this is .cloned() if it's an Option<&T>
+        };
 
-            let bucket = guard.priorities.get_mut(&priority).unwrap();
-
-            if let Some(index) = bucket.iter().position(|x| *x == tid) {
-                bucket.remove(index);
-
-                if bucket.is_empty() {
-                    guard.priorities.remove(&priority);
-                }
+        if let Some(bucket) = bucket {
+            for queue in guard.priorities.values_mut() {
+                queue.retain(|thread| {
+                    !bucket
+                        .iter()
+                        .any(|to_remove| Arc::ptr_eq(to_remove, thread))
+                });
             }
+
+            guard.priorities.retain(|_, queue| !queue.is_empty());
+            guard.lock.remove(&lock_id);
+        } else {
+            #[cfg(feature = "debug")]
+            kprintln!(
+                "[DEBUG remove_donors] No donors found releated to lock {}",
+                lock_id
+            );
         }
     }
 
     pub fn waits_on(&self) -> Option<Arc<Sleep>> {
         self.waits_on.clone()
+    }
+
+    pub fn set_waits_on(&mut self, lock: Option<Arc<Sleep>>) {
+        self.waits_on = lock;
     }
 
     pub fn set_status(&self, status: Status) {
